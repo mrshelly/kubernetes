@@ -17,8 +17,8 @@ limitations under the License.
 package dns
 
 const (
-	// v180AndAboveKubeDNSDeployment is the kube-dns Deployment manifest for the kube-dns manifest for v1.7+
-	v180AndAboveKubeDNSDeployment = `
+	// KubeDNSDeployment is the kube-dns Deployment manifest for the kube-dns manifest for v1.7+
+	KubeDNSDeployment = `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -196,6 +196,8 @@ metadata:
     kubernetes.io/name: "KubeDNS"
   name: kube-dns
   namespace: kube-system
+  annotations:
+    prometheus.io/scrape: "true"
   # Without this resourceVersion value, an update of the Service between versions will yield:
   #   Service "kube-dns" is invalid: metadata.resourceVersion: Invalid value: "": must be specified for an update
   resourceVersion: "0"
@@ -224,7 +226,11 @@ metadata:
   labels:
     k8s-app: kube-dns
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
   selector:
     matchLabels:
       k8s-app: kube-dns
@@ -293,15 +299,17 @@ data:
   Corefile: |
     .:53 {
         errors
-        log
         health
-        kubernetes {{ .DNSDomain }} {{ .ServiceCIDR }} {
+        kubernetes {{ .DNSDomain }} in-addr.arpa ip6.arpa {
            pods insecure
-        }
-        prometheus
-        proxy . /etc/resolv.conf
+           upstream
+           fallthrough in-addr.arpa ip6.arpa
+        }{{ .Federation }}
+        prometheus :9153
+        proxy . {{ .UpstreamNameserver }}
         cache 30
-    }
+        reload
+    }{{ .StubDomain }}
 `
 	// CoreDNSClusterRole is the CoreDNS ClusterRole manifest
 	CoreDNSClusterRole = `
